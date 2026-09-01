@@ -12,8 +12,8 @@
  * would interleave.
  */
 
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 import {
   LinearSRGBColorSpace,
@@ -113,6 +113,10 @@ function prependLibraryPath(dir: string): void {
  * Operator-set env vars win, except a leftover pointer at the stock
  * macOS-15 Dawn binary — that is replaced on Darwin < 24 so a warm
  * `next dev` process recovers after this fallback is added.
+ *
+ * Empty Dawn flags do not enumerate lavapipe on a display-less host.
+ * Force the Vulkan backend and put the ICD plus its shared-library
+ * closure on the loader search path before `vgpu/node` is imported.
  */
 async function configureHeadlessGpu(): Promise<void> {
   if (process.env.VGPU_CACHE_DIR === undefined) {
@@ -135,6 +139,13 @@ async function configureHeadlessGpu(): Promise<void> {
     process.env.XDG_RUNTIME_DIR = '/tmp';
   }
 
+  const headlessLinux =
+    process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+
+  if (headlessLinux && process.env.VGPU_DAWN_FLAGS === undefined) {
+    process.env.VGPU_DAWN_FLAGS = 'backend=vulkan';
+  }
+
   // Advertise lavapipe before Dawn creates its Vulkan instance so the first
   // requestAdapter can see a CPU device. Forcing VGPU_ADAPTER=software uses
   // empty Dawn flags and fails to enumerate anything on Vercel.
@@ -143,7 +154,39 @@ async function configureHeadlessGpu(): Promise<void> {
       '@vgpu/adapter-node/install-software-renderer'
     );
     const icd = getCachedSoftwareRenderer({ cacheRoot });
-    if (icd) process.env.VK_ICD_FILENAMES = icd;
+    if (icd) {
+      const lvpDir = dirname(icd);
+      const library = join(lvpDir, 'libvulkan_lvp.so');
+      // Relative `./libvulkan_lvp.so` in the shipped JSON is resolved against
+      // the JSON path by a spec-compliant loader, but pinning an absolute path
+      // removes cwd from the equation on a serverless filesystem.
+      const rewritten = join('/tmp', `og3d-lvp-${process.pid}.json`);
+      writeFileSync(
+        rewritten,
+        JSON.stringify({
+          file_format_version: '1.0.0',
+          ICD: { library_path: library, api_version: '1.4.305' },
+        }),
+      );
+      process.env.VK_ICD_FILENAMES = rewritten;
+      process.env.VK_DRIVER_FILES = rewritten;
+      prependLibraryPath(lvpDir);
+    }
+  }
+
+  if (process.env.VERCEL) {
+    console.warn('og-3d: gpu env', {
+      cwd: process.cwd(),
+      arch: process.arch,
+      dawn: process.env.VGPU_DAWN_BINARY,
+      flags: process.env.VGPU_DAWN_FLAGS,
+      icd: process.env.VK_ICD_FILENAMES,
+      libs: cacheRoot ? join(cacheRoot, 'libs') : undefined,
+      hasLoader: cacheRoot ? existsSync(join(cacheRoot, 'libs', 'libvulkan.so.1')) : false,
+      hasDrm: cacheRoot ? existsSync(join(cacheRoot, 'libs', 'libdrm.so.2')) : false,
+      hasUdev: cacheRoot ? existsSync(join(cacheRoot, 'libs', 'libudev.so.1')) : false,
+      hasZstd: cacheRoot ? existsSync(join(cacheRoot, 'libs', 'libzstd.so.1')) : false,
+    });
   }
 }
 

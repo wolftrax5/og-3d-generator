@@ -132,10 +132,10 @@ The route runs on the Node.js runtime (`export const runtime = 'nodejs'`)
 because Dawn is a native addon.
 
 A Vercel function has no GPU and no vendor Vulkan ICD, so vgpu needs its
-portable lavapipe (CPU) renderer. That is a downloaded data file, invisible to
-file tracing, and it cannot be fetched into `$HOME/.cache` at runtime — so it is
-downloaded at build time into a project-local `.vgpu/`, traced into the function
-bundle, and picked up at runtime:
+portable lavapipe (CPU) renderer **and** the shared libraries that renderer
+`dlopen`s (`libvulkan.so.1`, `libdrm`, `libudev`, `libzstd`). Those are
+downloaded at build time into a project-local `.vgpu/`, traced into the
+function bundle, and picked up at runtime:
 
 - `npm run vercel-build` runs `scripts/vendor-gpu-runtime.sh` before
   `next build`. Set the project's build command to `npm run vercel-build`.
