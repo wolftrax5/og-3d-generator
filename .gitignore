@@ -18,3 +18,4 @@ out.png
 
 # Downloaded at build time by scripts/vendor-gpu-runtime.sh
 .vgpu
+.env*
