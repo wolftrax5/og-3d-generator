@@ -7,8 +7,11 @@
 # is not a place vgpu can populate at runtime, so the renderer has to be present
 # before the function is packaged. Run this during the build.
 #
-# The download only exists for Linux x64 and arm64; on any other platform this
-# exits successfully so local builds are unaffected.
+# Vercel builds on Linux x64 but the og-3d function is configured for arm64
+# (see vercel.json). The default `vgpu install-software-renderer` CLI installs
+# for the build host arch (x64), so we also install arm64 explicitly here.
+#
+# On non-Linux hosts this exits successfully so local builds are unaffected.
 
 set -eu
 
@@ -19,8 +22,22 @@ if [ "$(uname -s)" != "Linux" ]; then
   exit 0
 fi
 
-echo "vendor-gpu-runtime: installing software renderer into $CACHE_DIR"
-VGPU_CACHE_DIR="$CACHE_DIR" npx --yes vgpu install-software-renderer
+export VGPU_CACHE_DIR="$CACHE_DIR"
+
+install_renderer() {
+  arch="$1"
+  echo "vendor-gpu-runtime: installing lavapipe for linux/${arch} into $CACHE_DIR"
+  node --input-type=module -e "
+    import { installSoftwareRenderer } from '@vgpu/adapter-node/install-software-renderer';
+    const result = await installSoftwareRenderer({ arch: '${arch}', platform: 'linux' });
+    console.log('vendor-gpu-runtime: linux/${arch} lavapipe ready at', result.path);
+  "
+}
+
+# Build host is x64; keep x64 in the cache for CI/diagnostics on the same arch.
+install_renderer x64
+# The deployed function runs on arm64 — this is the copy it will look up at runtime.
+install_renderer arm64
 
 echo "vendor-gpu-runtime: contents"
 find "$CACHE_DIR" -type f -exec ls -la {} \;

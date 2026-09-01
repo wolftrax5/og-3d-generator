@@ -142,7 +142,10 @@ bundle, and picked up at runtime:
 
 - `npm run vercel-build` runs `scripts/vendor-gpu-runtime.sh` before
   `next build`. Set the project's build command to `npm run vercel-build`.
-- `next.config.ts` lists `.vgpu/**` and the Linux Dawn binary under
+  The vendor script installs lavapipe for **both** Linux x64 (build host) and
+  **arm64** (function runtime), because Vercel builds on x64 but the function
+  is configured for arm64 in `vercel.json`.
+- `next.config.ts` lists `.vgpu/**` and the Linux Dawn binaries under
   `outputFileTracingIncludes` for `/api/og-3d`.
 - `lib/og3d/renderer.ts` points `VGPU_CACHE_DIR` at that directory when the
   operator has not set one, and vgpu then selects the cached CPU renderer

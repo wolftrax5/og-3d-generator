@@ -10,7 +10,15 @@ const nextConfig: NextConfig = {
     // Dawn binary (chosen at runtime by platform) or the vendored CPU renderer
     // (a data file). Both have to be listed explicitly or the deployed
     // function has no way to create a device.
-    '/api/og-3d': ['./.vgpu/**/*', './node_modules/webgpu/dist/linux-*.dawn.node'],
+    //
+    // The function runs on arm64 (vercel.json); list both Linux Dawn binaries
+    // so the trace is explicit, plus the whole .vgpu tree (arm64 lavapipe is
+    // installed at build time even though the build host is x64).
+    '/api/og-3d': [
+      './.vgpu/**/*',
+      './node_modules/webgpu/dist/linux-arm64.dawn.node',
+      './node_modules/webgpu/dist/linux-x64.dawn.node',
+    ],
   },
 };
 
