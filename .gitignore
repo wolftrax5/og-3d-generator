@@ -1,0 +1,20 @@
+node_modules
+.next
+out
+build
+
+.env
+.env*.local
+
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+.vercel
+
+# Local render output from scripts/render.ts
+.verify
+out.png
+
+# Downloaded at build time by scripts/vendor-gpu-runtime.sh
+.vgpu

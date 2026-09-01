@@ -1,0 +1,33 @@
+{
+  "name": "og-3d-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "vercel-build": "npm run vgpu:vendor && next build",
+    "vgpu:vendor": "sh scripts/vendor-gpu-runtime.sh",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "render": "node scripts/render.ts",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "gpu:doctor": "vgpu doctor",
+    "gpu:install": "vgpu install-dawn"
+  },
+  "dependencies": {
+    "next": "^16.3.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1",
+    "vgpu": "^0.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "typescript": "^7.0.2"
+  }
+}
