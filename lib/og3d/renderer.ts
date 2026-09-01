@@ -13,8 +13,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 import {
   LinearSRGBColorSpace,
@@ -26,6 +25,13 @@ import {
   WebGPURenderer,
 } from 'three/webgpu';
 
+import {
+  VENDORED_CACHE_DIR,
+  dawnBinaryFileName,
+  ensureCompatibleDawnBinary,
+  isStockSequoiaBinary,
+  needsMacos14Dawn,
+} from './dawn.ts';
 import type { OgParams } from './params.ts';
 import { depadRows, downsample } from './pixels.ts';
 import { buildScene } from './scene.ts';
@@ -93,29 +99,6 @@ let queue: Promise<unknown> = Promise.resolve();
 /** Bounded so a caller passing many sizes cannot grow GPU memory without limit. */
 const MAX_CACHED_TARGETS = 4;
 
-/** Kept in sync with `scripts/vendor-gpu-runtime.sh` and `next.config.ts`. */
-const VENDORED_CACHE_DIR = '.vgpu';
-
-function dawnBinaryFileName(): string {
-  const arch = process.platform === 'darwin' ? 'universal' : process.arch;
-  return `${process.platform}-${arch}.dawn.node`;
-}
-
-function resolveDawnBinary(): string | undefined {
-  const name = dawnBinaryFileName();
-  const candidates: string[] = [];
-
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    candidates.push(join(dirname(req.resolve('webgpu')), 'dist', name));
-  } catch {
-    // cwd may not have a package.json in some traces; fall through.
-  }
-
-  candidates.push(join(process.cwd(), 'node_modules', 'webgpu', 'dist', name));
-  return candidates.find((path) => existsSync(path));
-}
-
 function prependLibraryPath(dir: string): void {
   if (!existsSync(dir)) return;
   const current = process.env.LD_LIBRARY_PATH;
@@ -127,8 +110,9 @@ function prependLibraryPath(dir: string): void {
  * function. A Vercel function has no GPU, no Vulkan ICD, and no writable
  * `$HOME/.cache`, so both have to be in the bundle.
  *
- * Operator-set env vars win, so a local macOS 14 override of
- * `VGPU_DAWN_BINARY` still works.
+ * Operator-set env vars win, except a leftover pointer at the stock
+ * macOS-15 Dawn binary — that is replaced on Darwin < 24 so a warm
+ * `next dev` process recovers after this fallback is added.
  */
 async function configureHeadlessGpu(): Promise<void> {
   if (process.env.VGPU_CACHE_DIR === undefined) {
@@ -136,8 +120,11 @@ async function configureHeadlessGpu(): Promise<void> {
     if (existsSync(vendored)) process.env.VGPU_CACHE_DIR = vendored;
   }
 
-  if (process.env.VGPU_DAWN_BINARY === undefined) {
-    const binary = resolveDawnBinary();
+  const currentDawn = process.env.VGPU_DAWN_BINARY;
+  const shouldReplace =
+    currentDawn === undefined || (needsMacos14Dawn() && isStockSequoiaBinary(currentDawn));
+  if (shouldReplace) {
+    const binary = await ensureCompatibleDawnBinary();
     if (binary !== undefined) process.env.VGPU_DAWN_BINARY = binary;
   }
 

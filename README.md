@@ -121,13 +121,10 @@ Symbol not found: _OBJC_CLASS_$_MTLLogStateDescriptor
   ... (built for macOS 15.0 which is newer than running OS)
 ```
 
-Either upgrade macOS, or point vgpu at an older Dawn build for local work only:
-
-```bash
-npm i --no-save webgpu@0.3.0
-VGPU_DAWN_BINARY="$PWD/node_modules/webgpu/dist/darwin-$(node -p process.arch).dawn.node" \
-  node scripts/render.ts "" out.png
-```
+On Darwin < 24 the renderer vendors `webgpu@0.3.0`'s arch-specific binary into
+`.vgpu/macos14/` on `npm install` and on the first render, then points
+`VGPU_DAWN_BINARY` at it. That cache survives later `npm install`s, unlike
+`npm i --no-save webgpu@0.3.0`. An explicit `VGPU_DAWN_BINARY` still wins.
 
 ## Deploying to Vercel
 
