@@ -11,14 +11,10 @@ const nextConfig: NextConfig = {
     // (a data file). Both have to be listed explicitly or the deployed
     // function has no way to create a device.
     //
-    // The function runs on arm64 (vercel.json); list both Linux Dawn binaries
-    // so the trace is explicit, plus the whole .vgpu tree (arm64 lavapipe is
-    // installed at build time even though the build host is x64).
-    '/api/og-3d': [
-      './.vgpu/**/*',
-      './node_modules/webgpu/dist/linux-arm64.dawn.node',
-      './node_modules/webgpu/dist/linux-x64.dawn.node',
-    ],
+    // Native .node files are invisible to import tracing. Include the whole
+    // `webgpu` package (Linux Dawn binaries live under dist/) and the lavapipe
+    // cache vendored at build time.
+    '/api/og-3d': ['./.vgpu/**/*', './node_modules/webgpu/**/*'],
   },
 };
 

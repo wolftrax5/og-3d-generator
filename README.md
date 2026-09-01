@@ -142,14 +142,17 @@ bundle, and picked up at runtime:
 
 - `npm run vercel-build` runs `scripts/vendor-gpu-runtime.sh` before
   `next build`. Set the project's build command to `npm run vercel-build`.
-  The vendor script installs lavapipe for **both** Linux x64 (build host) and
-  **arm64** (function runtime), because Vercel builds on x64 but the function
-  is configured for arm64 in `vercel.json`.
-- `next.config.ts` lists `.vgpu/**` and the Linux Dawn binaries under
-  `outputFileTracingIncludes` for `/api/og-3d`.
-- `lib/og3d/renderer.ts` points `VGPU_CACHE_DIR` at that directory when the
-  operator has not set one, and vgpu then selects the cached CPU renderer
-  automatically.
+  The vendor script installs lavapipe for Linux x64 and arm64.
+- `next.config.ts` traces `.vgpu/**` and the whole `webgpu` package (native
+  Dawn `.node` binaries) into `/api/og-3d`.
+- `lib/og3d/renderer.ts` points `VGPU_CACHE_DIR` / `VGPU_DAWN_BINARY` at those
+  files and sets `VGPU_ADAPTER=software` on Vercel so the function never waits
+  for a GPU that is not there.
+
+`architecture: "arm64"` is not accepted in this project's `vercel.json` by
+Vercel's config API, so the function stays on the default x64 image. Stock
+`webgpu` ships a `linux-x64.dawn.node`; vgpu's own portable Dawn prebuild is
+arm64-only.
 
 Recommended function configuration: raise memory (CPU scales with it — the
 render is CPU-bound on lavapipe) and allow a generous `maxDuration` for cold

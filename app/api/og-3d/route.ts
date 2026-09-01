@@ -10,6 +10,9 @@ export const runtime = 'nodejs';
 // The response is derived from the query string, which the Edge cache keys on.
 export const dynamic = 'force-dynamic';
 
+// Cold start pays for Dawn + lavapipe; keep the window generous.
+export const maxDuration = 60;
+
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 
 export async function GET(request: NextRequest): Promise<Response> {

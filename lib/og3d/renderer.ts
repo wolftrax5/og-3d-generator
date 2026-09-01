@@ -13,7 +13,8 @@
  */
 
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
 import {
   LinearSRGBColorSpace,
@@ -95,25 +96,78 @@ const MAX_CACHED_TARGETS = 4;
 /** Kept in sync with `scripts/vendor-gpu-runtime.sh` and `next.config.ts`. */
 const VENDORED_CACHE_DIR = '.vgpu';
 
-/**
- * A serverless Linux function has no GPU and no vendor Vulkan ICD, so vgpu
- * falls back to a cached lavapipe (CPU) renderer. Its cache root defaults to
- * `$HOME/.cache`, which is not writable or populated there — point it at the
- * copy vendored into the deployment by `npm run vgpu:vendor` instead.
- *
- * Only set when the operator has not chosen a root explicitly.
- */
-function useVendoredGpuCache(): void {
-  if (process.env.VGPU_CACHE_DIR !== undefined) return;
+function dawnBinaryFileName(): string {
+  const arch = process.platform === 'darwin' ? 'universal' : process.arch;
+  return `${process.platform}-${arch}.dawn.node`;
+}
 
-  const vendored = join(process.cwd(), VENDORED_CACHE_DIR);
-  if (existsSync(vendored)) {
-    process.env.VGPU_CACHE_DIR = vendored;
+function resolveDawnBinary(): string | undefined {
+  const name = dawnBinaryFileName();
+  const candidates: string[] = [];
+
+  try {
+    const req = createRequire(join(process.cwd(), 'package.json'));
+    candidates.push(join(dirname(req.resolve('webgpu')), 'dist', name));
+  } catch {
+    // cwd may not have a package.json in some traces; fall through.
+  }
+
+  candidates.push(join(process.cwd(), 'node_modules', 'webgpu', 'dist', name));
+  return candidates.find((path) => existsSync(path));
+}
+
+function prependLibraryPath(dir: string): void {
+  if (!existsSync(dir)) return;
+  const current = process.env.LD_LIBRARY_PATH;
+  process.env.LD_LIBRARY_PATH = current ? `${dir}:${current}` : dir;
+}
+
+/**
+ * Point vgpu at the Dawn binary and lavapipe cache that shipped with this
+ * function. A Vercel function has no GPU, no Vulkan ICD, and no writable
+ * `$HOME/.cache`, so both have to be in the bundle.
+ *
+ * Operator-set env vars win, so a local macOS 14 override of
+ * `VGPU_DAWN_BINARY` still works.
+ */
+async function configureHeadlessGpu(): Promise<void> {
+  if (process.env.VGPU_CACHE_DIR === undefined) {
+    const vendored = join(process.cwd(), VENDORED_CACHE_DIR);
+    if (existsSync(vendored)) process.env.VGPU_CACHE_DIR = vendored;
+  }
+
+  if (process.env.VGPU_DAWN_BINARY === undefined) {
+    const binary = resolveDawnBinary();
+    if (binary !== undefined) process.env.VGPU_DAWN_BINARY = binary;
+  }
+
+  const cacheRoot = process.env.VGPU_CACHE_DIR;
+  if (cacheRoot) prependLibraryPath(join(cacheRoot, 'libs'));
+
+  if (process.env.XDG_RUNTIME_DIR === undefined) {
+    process.env.XDG_RUNTIME_DIR = '/tmp';
+  }
+
+  // Advertise lavapipe before Dawn creates its Vulkan instance so the first
+  // requestAdapter can see a CPU device. Forcing VGPU_ADAPTER=software uses
+  // empty Dawn flags and fails to enumerate anything on Vercel.
+  if (process.env.VK_ICD_FILENAMES === undefined && cacheRoot) {
+    const { getCachedSoftwareRenderer } = await import(
+      '@vgpu/adapter-node/install-software-renderer'
+    );
+    const icd = getCachedSoftwareRenderer({ cacheRoot });
+    if (icd) process.env.VK_ICD_FILENAMES = icd;
   }
 }
 
 async function createContext(): Promise<RendererContext> {
-  useVendoredGpuCache();
+  await configureHeadlessGpu();
+
+  if (process.env.VERCEL && !process.env.VGPU_DAWN_BINARY) {
+    throw new Error(
+      `og-3d: Dawn binary ${dawnBinaryFileName()} was not traced into the function (cwd=${process.cwd()})`,
+    );
+  }
 
   // Imported lazily: `vgpu/node` loads the native Dawn addon on import, which
   // must not happen while the route module is merely being analyzed at build.

@@ -1,9 +1,7 @@
 {
   "functions": {
     "app/api/og-3d/route.ts": {
-      "memory": 1024,
-      "maxDuration": 60,
-      "architecture": "arm64"
+      "maxDuration": 60
     }
   }
 }
