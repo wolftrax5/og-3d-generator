@@ -22,8 +22,7 @@
     "isolatedModules": true,
     "incremental": true,
     "types": [
-      "node",
-      "@webgpu/types"
+      "node"
     ],
     "plugins": [
       {
