@@ -4,7 +4,7 @@ import { isRenderJob } from '@/lib/og3d/job';
 import { renderJob } from '@/lib/og3d/sandbox-worker';
 
 // First boot installs lavapipe and npm packages inside the sandbox.
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 export const POST = handleCallback(
   async (message, metadata) => {
