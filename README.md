@@ -1,16 +1,23 @@
 # 3D OpenGraph Image Generator
 
-A single Next.js route handler that draws a shaded primitive and returns a PNG,
-using `ImageResponse` from `next/og` (Satori under the hood).
+A Next.js route that returns a PNG immediately, then replaces it with a
+WebGPU frame rendered in a Vercel Sandbox.
 
 ```
 GET /api/og-3d?shape=torusknot&color=6366f1&roughness=0.2&metalness=0.9
 ```
 
-Each shape is an inline SVG — isometric faces for the polyhedra, gradients for
-the curved shapes — laid out by Satori and rasterized to PNG. There is no GPU,
-no native addon and no headless browser, so the route deploys as a plain
-Next.js function.
+The first response is an inline SVG (isometric faces for the polyhedra,
+gradients for the curved shapes) laid out by Satori via `ImageResponse`. That
+response is cached for one minute. The same request publishes the parameters
+to the `og-renders` queue. A private consumer forks a sandbox that already
+has lavapipe and Dawn, runs `sandbox/render.mjs`, and stores the PNG in
+Vercel Blob. The next request for that URL serves the stored frame with an
+immutable cache.
+
+Vercel Functions have no GPU. The sandbox does not either: it is a Linux
+microVM, and the frame is lavapipe (Vulkan on the CPU). The guest can
+`apt-get install` the Vulkan loader, which a function image cannot.
 
 ## How it works
 
@@ -18,17 +25,19 @@ Next.js function.
    `lib/og3d/params.ts`. Every parameter is optional and every invalid value
    falls back to a default, because an OpenGraph crawler will not retry a
    failed fetch.
-2. The shape is drawn as SVG. `color`, `metalness` and `light` pick the
-   highlight, mid and shadow tones; `roughness` moves the highlight stop of
-   the curved shapes' gradient.
-3. `ImageResponse` renders the layout to a PNG at `width` × `height`.
-4. The response carries `Cache-Control: public, max-age=31536000, immutable`
-   plus an `ETag` derived from the parameters, and answers a matching
-   `If-None-Match` with `304`.
+2. If `og/<fingerprint>.png` is already in Blob, that PNG is returned with
+   `Cache-Control: public, max-age=31536000, immutable`.
+3. Otherwise the shape is drawn as SVG and `ImageResponse` rasterizes it.
+   The preview is cached for 60 seconds, and `send('og-renders', job)`
+   publishes the work. The idempotency key is the fingerprint, so repeated
+   hits collapse into one delivery.
+4. `app/api/queues/og-render` is invoked only by the queue. It keeps a named
+   sandbox, `og-renderer`, snapshotted after the toolchain install, and
+   forks a fresh VM per message.
 
-This is a stylized 2D drawing, not a 3D render: `rx` and `ry` are accepted but
-have no effect, `rz` rotates the drawing in the image plane, and `torusknot`
-is drawn as a torus.
+The Satori preview ignores `rx` and `ry`, rotates only `rz`, and draws
+`torusknot` as a torus. The sandbox frame honors the full parameter set,
+including `rx`, `ry`, and `supersample`.
 
 ## Parameters
 
@@ -41,10 +50,11 @@ is drawn as a torus.
 | `metalness`    | `m`                  | `0` – `1`                          | `0.15`              |
 | `width`        | `w`                  | `64` – `2048`                      | `1200`              |
 | `height`       | `h`                  | `64` – `2048`                      | `630`               |
-| `rz`           | `rotz`               | degrees, `-360` – `360`            | `0`                 |
+| `rx` `ry` `rz` | `rotx` `roty` `rotz` | degrees, `-360` – `360`            | `-20`, `35`, `0`    |
 | `zoom`         | `z`                  | `0.25` – `4`                       | `1`                 |
 | `light`        | `l`                  | `0` – `4`                          | `1`                 |
 | `wireframe`    | `wire`               | `0` / `1` (bare key means on)      | off                 |
+| `ss`           | `supersample`        | `1` – `3`                          | `2`                 |
 
 Shapes: `cube`, `sphere`, `torus`, `torusknot`, `cone`, `cylinder`, `capsule`,
 `icosahedron`, `octahedron`, `tetrahedron`, `dodecahedron`, `ring`, `plane`.
@@ -65,13 +75,24 @@ npm test               # parameter parsing and fallbacks
 
 ## Deploying to Vercel
 
-No special configuration: the default build command (`next build`) and the
-default Node.js runtime are all this needs.
+The build command stays `next build`. The route needs two Vercel products
+besides the function itself:
+
+- **Blob**, so finished frames have a public URL. Connect a Blob store so
+  `BLOB_READ_WRITE_TOKEN` is set. Without it the route still returns the
+  Satori preview and the enqueue is a no-op failure in the logs.
+- **Queues and Sandbox**, both authenticated with the deployment's OIDC
+  token. Locally, `vercel link` and `vercel env pull` provide that token.
+  `vercel dev` delivers queue messages to the consumer.
+
+The consumer allows 800 seconds because the first sandbox boot installs
+system packages and `npm install`s Dawn. Later messages fork the snapshot.
+The plan has to allow that `maxDuration`.
 
 ```bash
 vercel --prod
 ```
 
-If the project previously used the WebGPU version, set the Build Command back
-to the default and remove any `LD_LIBRARY_PATH`, `VGPU_*` or `VK_*`
-environment variables.
+Remove any leftover `LD_LIBRARY_PATH`, `VGPU_*`, or `VK_*` variables and a
+custom build command from the old in-function WebGPU deploy. Those belong
+inside the sandbox now, and the guest sets them itself.

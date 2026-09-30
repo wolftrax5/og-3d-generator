@@ -34,21 +34,27 @@ const PARAM_DOCS: { name: string; aliases: string; values: string; fallback: str
     values: `${LIMITS.minSize} – ${LIMITS.maxSize}`,
     fallback: String(DEFAULTS.height),
   },
-  { name: 'rz', aliases: 'rotz', values: 'degrees, -360 – 360', fallback: String(DEFAULTS.rotationZ) },
+  {
+    name: 'rx, ry, rz',
+    aliases: 'rotx, roty, rotz',
+    values: 'degrees, -360 – 360',
+    fallback: `${DEFAULTS.rotationX}, ${DEFAULTS.rotationY}, ${DEFAULTS.rotationZ}`,
+  },
   { name: 'zoom', aliases: 'z', values: '0.25 – 4', fallback: String(DEFAULTS.zoom) },
   { name: 'light', aliases: 'l', values: '0 – 4', fallback: String(DEFAULTS.light) },
   { name: 'wireframe', aliases: 'wire', values: '0 or 1', fallback: 'off' },
+  { name: 'ss', aliases: 'supersample', values: '1 – 3', fallback: String(DEFAULTS.supersample) },
 ];
 
 export default function Home() {
   return (
     <main className="page">
-      <p className="eyebrow">Serverless · Satori · Zero assets</p>
+      <p className="eyebrow">Satori preview · Sandbox render · Blob</p>
       <h1>3D OpenGraph Image Generator</h1>
       <p className="lede">
-        <code>GET /api/og-3d</code> draws a shaded primitive as SVG, renders it to a PNG with{' '}
-        <code>next/og</code>, and serves it with immutable caching. No image files, no GPU, no
-        headless browser — the whole image is generated from the query string.
+        <code>GET /api/og-3d</code> returns a SVG preview immediately, queues a WebGPU frame on a
+        Vercel Sandbox, and serves that PNG from Blob once it is stored. The preview is cached
+        for a minute. The finished frame is cached for a year.
       </p>
 
       <h2>Examples</h2>
@@ -97,7 +103,8 @@ export default function Home() {
 
       <p className="note">
         Every parameter is optional and every invalid value falls back to its default, so a bare
-        request always returns an image. Crawlers do not retry a failed OpenGraph fetch.
+        request always returns an image. The preview ignores rx and ry; the queued sandbox frame
+        uses them. Crawlers do not retry a failed OpenGraph fetch.
       </p>
     </main>
   );

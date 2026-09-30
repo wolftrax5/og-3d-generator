@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
   title: '3D OpenGraph Image Generator',
   description:
-    'Serverless OpenGraph images rendered from Three.js primitives on a headless WebGPU device.',
+    'OpenGraph images. A Satori preview is returned immediately; a WebGPU frame is rendered in a sandbox and stored in Blob.',
   openGraph: {
     images: ['/api/og-3d?shape=torusknot&color=6366f1&metalness=0.9&roughness=0.2'],
   },

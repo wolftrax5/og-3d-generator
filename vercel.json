@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "app/api/queues/og-render/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "og-renders",
+          "retryAfterSeconds": 30,
+          "maxDeliveries": 3
+        }
+      ]
+    }
+  }
+}
